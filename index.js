@@ -16,6 +16,30 @@ app.set('views', path.join(__dirname, 'views'));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.urlencoded({ extended: true }));
 
+app.use(async (req, res, next) => {
+  if (req.path.startsWith('/admin') || req.path.match(/\.(css|js|ico|png|jpg)$/i)) {
+    return next();
+  }
+  
+  try {
+    const ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress || '').split(',')[0].trim();
+    const ipHash = ip ? ip.substring(0, Math.min(ip.length, 15)) + '***' : 'unknown';
+    
+    await pool.query(`
+      INSERT INTO page_views (path, ip_hash, user_agent, referrer)
+      VALUES ($1, $2, $3, $4)
+    `, [
+      req.path || '/',
+      ipHash,
+      req.headers['user-agent']?.substring(0, 255) || null,
+      req.headers['referer']?.substring(0, 255) || null
+    ]);
+  } catch (err) {
+    console.error('Tracking error:', err);
+  }
+  next();
+});
+
 const brawlers = [
   'Shelly', 'Colt', 'Bull', 'Jessie', 'Nita', 'Dynamike', 'El Primo', 'Barley', 'Brock',
   'Rico', 'Spike', 'Mortis', 'Crow', 'Leon', 'Sandy', 'Amber', 'Gale', 'Surge', 'Colette',
@@ -81,10 +105,36 @@ app.get('/admin', async (req, res) => {
       WHERE table_schema = 'public' ORDER BY table_name
     `);
     const notes = await pool.query('SELECT * FROM notes ORDER BY created_at DESC');
-    res.render('admin', { tables: tables.rows, notes: notes.rows });
+    
+    const stats = {};
+    stats.total = (await pool.query('SELECT COUNT(*) as count FROM page_views')).rows[0].count;
+    stats.today = (await pool.query("SELECT COUNT(*) as count FROM page_views WHERE created_at::date = CURRENT_DATE")).rows[0].count;
+    stats.week = (await pool.query("SELECT COUNT(*) as count FROM page_views WHERE created_at >= NOW() - INTERVAL '7 days'")).rows[0].count;
+    
+    stats.byPath = (await pool.query(`
+      SELECT path, COUNT(*) as visits 
+      FROM page_views 
+      GROUP BY path 
+      ORDER BY visits DESC 
+      LIMIT 10
+    `)).rows;
+    
+    stats.byDay = (await pool.query(`
+      SELECT DATE(created_at) as date, COUNT(*) as visits
+      FROM page_views
+      WHERE created_at >= NOW() - INTERVAL '30 days'
+      GROUP BY DATE(created_at)
+      ORDER BY date DESC
+    `)).rows;
+    
+    stats.recent = (await pool.query(`
+      SELECT * FROM page_views ORDER BY created_at DESC LIMIT 50
+    `)).rows;
+
+    res.render('admin', { tables: tables.rows, notes: notes.rows, stats });
   } catch (err) {
     console.error(err);
-    res.render('admin', { tables: [], notes: [] });
+    res.render('admin', { tables: [], notes: [], stats: null });
   }
 });
 
@@ -121,6 +171,18 @@ const initDb = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS page_views (
+        id SERIAL PRIMARY KEY,
+        path VARCHAR(255) NOT NULL,
+        ip_hash VARCHAR(50),
+        user_agent VARCHAR(255),
+        referrer VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
     console.log('Database initialized');
   } catch (err) {
     console.error('Database init error:', err);
