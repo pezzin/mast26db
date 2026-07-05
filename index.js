@@ -74,6 +74,40 @@ app.post('/notes/:id/delete', async (req, res) => {
   res.redirect('/');
 });
 
+app.get('/admin', async (req, res) => {
+  try {
+    const tables = await pool.query(`
+      SELECT table_name FROM information_schema.tables 
+      WHERE table_schema = 'public' ORDER BY table_name
+    `);
+    const notes = await pool.query('SELECT * FROM notes ORDER BY created_at DESC');
+    res.render('admin', { tables: tables.rows, notes: notes.rows });
+  } catch (err) {
+    console.error(err);
+    res.render('admin', { tables: [], notes: [] });
+  }
+});
+
+app.post('/admin/query', async (req, res) => {
+  const { query } = req.body;
+  try {
+    const result = await pool.query(query);
+    res.render('admin', { 
+      tables: (await pool.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")).rows,
+      notes: (await pool.query('SELECT * FROM notes ORDER BY created_at DESC')).rows,
+      queryResult: result.rows,
+      queryError: null
+    });
+  } catch (err) {
+    res.render('admin', { 
+      tables: (await pool.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")).rows,
+      notes: (await pool.query('SELECT * FROM notes ORDER BY created_at DESC')).rows,
+      queryResult: null,
+      queryError: err.message
+    });
+  }
+});
+
 const initDb = async () => {
   try {
     await pool.query(`

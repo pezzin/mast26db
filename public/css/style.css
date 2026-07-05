@@ -125,3 +125,15 @@ textarea {
 .btn-delete:hover {
   background: #c0392b;
 }
+
+.admin-link {
+  display: block;
+  text-align: center;
+  margin-top: 30px;
+  color: rgba(255,255,255,0.7);
+  font-size: 0.9rem;
+}
+
+.admin-link:hover {
+  color: white;
+}

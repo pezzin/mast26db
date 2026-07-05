@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - Database</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    h1 { margin-bottom: 10px; color: #00d9ff; }
+    a { color: #00d9ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .section {
+      background: #16213e;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    h2 { color: #00d9ff; margin-bottom: 15px; font-size: 1.2rem; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    th, td {
+      padding: 10px;
+      text-align: left;
+      border-bottom: 1px solid #2a3a5e;
+    }
+    th { background: #0f3460; color: #00d9ff; }
+    tr:hover { background: #1f2b4a; }
+    .badge {
+      background: #00d9ff;
+      color: #1a1a2e;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      margin-right: 8px;
+    }
+    textarea {
+      width: 100%;
+      min-height: 100px;
+      background: #0f3460;
+      border: 1px solid #00d9ff;
+      color: #eee;
+      border-radius: 8px;
+      padding: 12px;
+      font-family: 'Consolas', monospace;
+      font-size: 14px;
+      resize: vertical;
+    }
+    .btn {
+      background: #00d9ff;
+      color: #1a1a2e;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      margin-top: 10px;
+    }
+    .btn:hover { background: #00b8d9; }
+    .error { color: #ff6b6b; background: #2a1a1a; padding: 10px; border-radius: 8px; margin-top: 10px; }
+    .success { color: #51cf66; }
+    pre {
+      background: #0f3460;
+      padding: 15px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 13px;
+    }
+    .back-link { margin-bottom: 20px; display: inline-block; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="/" class="back-link">← Torna alla home</a>
+    <h1>Database Admin</h1>
+    
+    <div class="section">
+      <h2>Tabelle (<%= tables.length %>)</h2>
+      <% tables.forEach(t => { %>
+        <span class="badge"><%= t.table_name %></span>
+      <% }) %>
+    </div>
+
+    <div class="section">
+      <h2>Tabella: notes (<%= notes.length %> righe)</h2>
+      <% if (notes.length > 0) { %>
+        <table>
+          <thead>
+            <tr>
+              <% Object.keys(notes[0]).forEach(col => { %>
+                <th><%= col %></th>
+              <% }) %>
+            </tr>
+          </thead>
+          <tbody>
+            <% notes.forEach(row => { %>
+              <tr>
+                <% Object.values(row).forEach(val => { %>
+                  <td><%= val %></td>
+                <% }) %>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } else { %>
+        <p>Nessun dato</p>
+      <% } %>
+    </div>
+
+    <div class="section">
+      <h2>Esegui Query SQL</h2>
+      <form action="/admin/query" method="POST">
+        <textarea name="query" placeholder="SELECT * FROM notes;">SELECT * FROM notes;</textarea>
+        <button type="submit" class="btn">Esegui</button>
+      </form>
+      <% if (locals.queryError) { %>
+        <div class="error"><%= queryError %></div>
+      <% } %>
+      <% if (locals.queryResult) { %>
+        <h3 style="margin-top: 15px; color: #51cf66;">Risultati (<%= queryResult.length %> righe)</h3>
+        <pre><%= JSON.stringify(queryResult, null, 2) %></pre>
+      <% } %>
+    </div>
+  </div>
+</body>
+</html>
