@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mini Tools</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Mini Tools</h1>
+    
+    <div class="tools-grid">
+      <div class="tool-card">
+        <h2>Testa o Croce</h2>
+        <button onclick="flipCoin()" class="btn">Lancia</button>
+        <p id="coin-result" class="result"></p>
+      </div>
+
+      <div class="tool-card">
+        <h2>Generatore Numeri</h2>
+        <input type="number" id="max-num" value="67" min="1" max="1000">
+        <button onclick="randomNumber()" class="btn">Genera</button>
+        <p id="random-result" class="result"></p>
+      </div>
+
+      <div class="tool-card">
+        <h2>Brawler Casuale</h2>
+        <button onclick="randomBrawler()" class="btn">Estrai</button>
+        <p id="brawler-result" class="result"></p>
+      </div>
+
+      <div class="tool-card notes-card">
+        <h2>Note</h2>
+        <form action="/notes" method="POST">
+          <textarea name="content" placeholder="Scrivi una nota..." required></textarea>
+          <button type="submit" class="btn">Salva</button>
+        </form>
+        <div class="notes-list">
+          <% notes.forEach(note => { %>
+            <div class="note">
+              <p><%= note.content %></p>
+              <span class="note-date"><%= new Date(note.created_at).toLocaleString('it-IT') %></span>
+              <form action="/notes/<%= note.id %>/delete" method="POST">
+                <button type="submit" class="btn-delete">Elimina</button>
+              </form>
+            </div>
+          <% }) %>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function flipCoin() {
+      const res = await fetch('/flip', { method: 'POST' });
+      const data = await res.json();
+      document.getElementById('coin-result').textContent = data.result;
+    }
+
+    async function randomNumber() {
+      const max = document.getElementById('max-num').value;
+      const res = await fetch('/random', { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'max=' + max
+      });
+      const data = await res.json();
+      document.getElementById('random-result').textContent = data.result;
+    }
+
+    async function randomBrawler() {
+      const res = await fetch('/brawler', { method: 'POST' });
+      const data = await res.json();
+      document.getElementById('brawler-result').textContent = data.brawler;
+    }
+  </script>
+</body>
+</html>
