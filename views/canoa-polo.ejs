@@ -122,10 +122,11 @@
   <div id="instructions">
     <h3>Controlli</h3>
     <p>
-      <strong>WASD / Frecce</strong> - Muovi il kayak &nbsp;|&nbsp;
+      <strong>WASD / Frecce</strong> - Muovi il tuo kayak (indicato da "TU") &nbsp;|&nbsp;
       <strong>SPAZIO / CLICK</strong> - Lancia la palla verso il cursore &nbsp;|&nbsp;
-      <strong>E</strong> - Ribalta avversario vicino con palla<br><br>
-      <strong>Regole:</strong> Non tenere la palla più di 5 secondi! Vinci segnando più goal nei 2 tempi da 2 minuti.
+      <strong>E</strong> - Ribalta avversario con palla<br><br>
+      <strong>Come giocare:</strong> Segui la freccia gialla verso la palla! Quando sei vicino, la prendi automaticamente.
+      Portala nella porta destra (gialla) e lancia! <strong>Regola:</strong> Non tenere la palla più di 5 secondi!
     </p>
   </div>
 
@@ -385,8 +386,8 @@
       } else {
         ball.x += ball.vx;
         ball.y += ball.vy;
-        ball.vx *= 0.98;
-        ball.vy *= 0.98;
+        ball.vx *= 0.95;
+        ball.vy *= 0.95;
 
         if (ball.x < GOAL_WIDTH || ball.x > W - GOAL_WIDTH) {
           if (ball.y > GOAL_Y && ball.y < GOAL_Y + GOAL_HEIGHT) {
@@ -453,10 +454,50 @@
         if (k.flipped) continue;
         
         const dist = Math.hypot(ball.x - k.x, ball.y - k.y);
-        if (dist < 30 && !ballHolder) {
+        const pickRadius = k.isPlayer ? 50 : 30;
+        if (dist < pickRadius && !ballHolder) {
           ballHolder = k;
           k.hasBall = true;
           possessionTime = 0;
+        }
+      }
+    }
+
+    function drawPlayerIndicator() {
+      const player = kayaks.find(k => k.isPlayer);
+      if (!player) return;
+      
+      ctx.fillStyle = '#ffd93d';
+      ctx.font = 'bold 14px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('TU', player.x, player.y - 25);
+      
+      if (!ballHolder || ballHolder.team !== 'blue') {
+        const dx = ball.x - player.x;
+        const dy = ball.y - player.y;
+        const dist = Math.hypot(dx, dy);
+        
+        if (dist > 80) {
+          const arrowX = player.x + (dx / dist) * 40;
+          const arrowY = player.y + (dy / dist) * 40;
+          
+          ctx.strokeStyle = '#ffd93d';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(player.x + (dx/dist)*25, player.y + (dy/dist)*25);
+          ctx.lineTo(arrowX, arrowY);
+          ctx.stroke();
+          
+          ctx.fillStyle = '#ffd93d';
+          ctx.beginPath();
+          ctx.arc(arrowX, arrowY, 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        
+        if (dist < 60 && dist > 30 && !ballHolder) {
+          ctx.fillStyle = '#51cf66';
+          ctx.font = 'bold 12px Arial';
+          ctx.fillText('AVVICINATI!', player.x, player.y + 35);
         }
       }
     }
@@ -511,14 +552,13 @@
 
         kayaks.forEach(k => k.update(dt));
         checkCollisions();
-        drawBall();
         updateUI();
       }
 
       drawField();
       kayaks.forEach(k => k.draw());
-      if (!ballHolder) drawBall();
-      if (ballHolder) drawBall();
+      drawBall();
+      if (gameRunning) drawPlayerIndicator();
 
       requestAnimationFrame(gameLoop);
     }
