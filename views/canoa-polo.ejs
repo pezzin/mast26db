@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Canoa Polo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a1628;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+      color: white;
+    }
+    h1 { color: #00d9ff; margin-bottom: 10px; }
+    .back-link { color: #00d9ff; margin-bottom: 15px; }
+    #game-container { position: relative; }
+    canvas {
+      border: 4px solid #00d9ff;
+      border-radius: 8px;
+      display: block;
+    }
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 30px;
+      background: rgba(0,0,0,0.7);
+      padding: 10px 20px;
+      border-radius: 20px;
+      font-size: 18px;
+      font-weight: bold;
+    }
+    .score-blue { color: #4da6ff; }
+    .score-red { color: #ff6b6b; }
+    #timer { color: #ffd93d; }
+    #possession {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.7);
+      padding: 8px 15px;
+      border-radius: 15px;
+      font-size: 14px;
+    }
+    #possession-bar {
+      width: 100px;
+      height: 8px;
+      background: #333;
+      border-radius: 4px;
+      margin-top: 5px;
+    }
+    #possession-fill {
+      height: 100%;
+      background: #ffd93d;
+      border-radius: 4px;
+      transition: width 0.1s;
+    }
+    #instructions {
+      margin-top: 15px;
+      background: rgba(0,0,0,0.5);
+      padding: 15px;
+      border-radius: 10px;
+      max-width: 800px;
+    }
+    #instructions h3 { color: #00d9ff; margin-bottom: 8px; }
+    #instructions p { font-size: 14px; line-height: 1.6; opacity: 0.9; }
+    #message {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 48px;
+      font-weight: bold;
+      color: #ffd93d;
+      text-shadow: 2px 2px 10px rgba(0,0,0,0.8);
+      display: none;
+    }
+    #start-btn {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      padding: 15px 40px;
+      font-size: 24px;
+      background: #00d9ff;
+      color: #0a1628;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    #start-btn:hover { background: #00b8d9; }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-link">← Torna alla home</a>
+  <h1>Canoa Polo</h1>
+  
+  <div id="game-container">
+    <canvas id="game" width="900" height="500"></canvas>
+    <div id="ui">
+      <span class="score-blue">BLU: <span id="blue-score">0</span></span>
+      <span id="timer">2:00</span>
+      <span class="score-red">ROSSO: <span id="red-score">0</span></span>
+    </div>
+    <div id="possession">
+      Tempo palla: <span id="possession-time">0.0</span>s
+      <div id="possession-bar"><div id="possession-fill" style="width: 0%"></div></div>
+    </div>
+    <div id="message"></div>
+    <button id="start-btn">GIOCA!</button>
+  </div>
+
+  <div id="instructions">
+    <h3>Controlli</h3>
+    <p>
+      <strong>WASD / Frecce</strong> - Muovi il kayak &nbsp;|&nbsp;
+      <strong>SPAZIO / CLICK</strong> - Lancia la palla verso il cursore &nbsp;|&nbsp;
+      <strong>E</strong> - Ribalta avversario vicino con palla<br><br>
+      <strong>Regole:</strong> Non tenere la palla più di 5 secondi! Vinci segnando più goal nei 2 tempi da 2 minuti.
+    </p>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width;
+    const H = canvas.height;
+
+    const GOAL_WIDTH = 10;
+    const GOAL_HEIGHT = 120;
+    const GOAL_Y = (H - GOAL_HEIGHT) / 2;
+
+    let gameRunning = false;
+    let gameTime = 120;
+    let half = 1;
+    let blueScore = 0;
+    let redScore = 0;
+    let possessionTime = 0;
+    let ballHolder = null;
+
+    const keys = {};
+    let mouseX = W/2, mouseY = H/2;
+
+    const ball = { x: W/2, y: H/2, vx: 0, vy: 0, radius: 12 };
+    
+    class Kayak {
+      constructor(x, y, team, isPlayer = false) {
+        this.x = x;
+        this.y = y;
+        this.vx = 0;
+        this.vy = 0;
+        this.angle = team === 'blue' ? 0 : Math.PI;
+        this.team = team;
+        this.isPlayer = isPlayer;
+        this.width = 50;
+        this.height = 25;
+        this.speed = isPlayer ? 4 : 2.5;
+        this.hasBall = false;
+        this.flipped = false;
+        this.flipTimer = 0;
+        this.aiTimer = 0;
+        this.aiTarget = { x, y };
+      }
+
+      update(dt) {
+        if (this.flipped) {
+          this.flipTimer -= dt;
+          if (this.flipTimer <= 0) this.flipped = false;
+          return;
+        }
+
+        if (this.isPlayer) {
+          let ax = 0, ay = 0;
+          if (keys['KeyW'] || keys['ArrowUp']) ay = -1;
+          if (keys['KeyS'] || keys['ArrowDown']) ay = 1;
+          if (keys['KeyA'] || keys['ArrowLeft']) ax = -1;
+          if (keys['KeyD'] || keys['ArrowRight']) ax = 1;
+          
+          if (ax !== 0 || ay !== 0) {
+            const len = Math.sqrt(ax*ax + ay*ay);
+            this.vx = (ax/len) * this.speed;
+            this.vy = (ay/len) * this.speed;
+            this.angle = Math.atan2(ay, ax);
+          } else {
+            this.vx *= 0.9;
+            this.vy *= 0.9;
+          }
+        } else {
+          this.updateAI(dt);
+        }
+
+        this.x += this.vx;
+        this.y += this.vy;
+
+        this.x = Math.max(30, Math.min(W - 30, this.x));
+        this.y = Math.max(20, Math.min(H - 20, this.y));
+
+        if (this.hasBall && !ballHolder) {
+          ballHolder = this;
+        }
+      }
+
+      updateAI(dt) {
+        this.aiTimer -= dt;
+        if (this.aiTimer <= 0) {
+          this.aiTimer = 0.5 + Math.random() * 0.5;
+          
+          if (!ballHolder) {
+            const dist = Math.hypot(ball.x - this.x, ball.y - this.y);
+            if (dist < 30 && !ballHolder) {
+              ballHolder = this;
+              this.hasBall = true;
+            } else {
+              this.aiTarget = { x: ball.x + (Math.random() - 0.5) * 100, y: ball.y + (Math.random() - 0.5) * 100 };
+            }
+          } else if (ballHolder === this) {
+            const goalX = this.team === 'blue' ? W - 20 : 20;
+            const goalY = H/2;
+            this.aiTarget = { x: goalX, y: goalY + (Math.random() - 0.5) * GOAL_HEIGHT };
+            
+            if (Math.random() < 0.02) {
+              this.throwBall(goalX, goalY + (Math.random() - 0.5) * GOAL_HEIGHT * 0.8);
+            }
+          } else {
+            const target = ballHolder.team === this.team ? ballHolder : ball;
+            this.aiTarget = { 
+              x: target.x + (Math.random() - 0.5) * 50, 
+              y: target.y + (Math.random() - 0.5) * 50 
+            };
+          }
+        }
+
+        const dx = this.aiTarget.x - this.x;
+        const dy = this.aiTarget.y - this.y;
+        const dist = Math.hypot(dx, dy);
+        
+        if (dist > 10) {
+          this.vx = (dx / dist) * this.speed;
+          this.vy = (dy / dist) * this.speed;
+          this.angle = Math.atan2(dy, dx);
+        } else {
+          this.vx *= 0.9;
+          this.vy *= 0.9;
+        }
+      }
+
+      throwBall(tx, ty) {
+        if (!this.hasBall) return;
+        this.hasBall = false;
+        ballHolder = null;
+        possessionTime = 0;
+        
+        const dx = tx - this.x;
+        const dy = ty - this.y;
+        const dist = Math.hypot(dx, dy);
+        const speed = 12;
+        
+        ball.vx = (dx / dist) * speed;
+        ball.vy = (dy / dist) * speed;
+        ball.x = this.x + (dx / dist) * 30;
+        ball.y = this.y + (dy / dist) * 30;
+      }
+
+      flip() {
+        if (this.hasBall || (ballHolder === this)) {
+          this.flipped = true;
+          this.flipTimer = 2;
+          this.hasBall = false;
+          if (ballHolder === this) ballHolder = null;
+          possessionTime = 0;
+          return true;
+        }
+        return false;
+      }
+
+      draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+
+        if (this.flipped) {
+          ctx.rotate(Math.PI);
+          ctx.globalAlpha = 0.5;
+        }
+
+        ctx.fillStyle = this.team === 'blue' ? '#4da6ff' : '#ff6b6b';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, this.width/2, this.height/2, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = this.team === 'blue' ? '#2d7dd2' : '#cc3333';
+        ctx.beginPath();
+        ctx.ellipse(8, 0, 12, 10, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffd93d';
+        ctx.beginPath();
+        ctx.moveTo(this.width/2 + 5, -15);
+        ctx.lineTo(this.width/2 + 5, 15);
+        ctx.lineTo(this.width/2 + 2, 15);
+        ctx.lineTo(this.width/2 + 2, -15);
+        ctx.fill();
+
+        if (this.isPlayer) {
+          ctx.strokeStyle = '#ffd93d';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.ellipse(0, 0, this.width/2 + 5, this.height/2 + 5, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        ctx.restore();
+      }
+    }
+
+    let kayaks = [];
+
+    function initGame() {
+      kayaks = [];
+      kayaks.push(new Kayak(150, H/2, 'blue', true));
+      kayaks.push(new Kayak(100, H/4, 'blue'));
+      kayaks.push(new Kayak(100, H*3/4, 'blue'));
+      kayaks.push(new Kayak(200, H/3, 'blue'));
+      kayaks.push(new Kayak(200, H*2/3, 'blue'));
+
+      kayaks.push(new Kayak(W-150, H/2, 'red'));
+      kayaks.push(new Kayak(W-100, H/4, 'red'));
+      kayaks.push(new Kayak(W-100, H*3/4, 'red'));
+      kayaks.push(new Kayak(W-200, H/3, 'red'));
+      kayaks.push(new Kayak(W-200, H*2/3, 'red'));
+
+      ball.x = W/2;
+      ball.y = H/2;
+      ball.vx = 0;
+      ball.vy = 0;
+      ballHolder = null;
+      possessionTime = 0;
+      gameTime = 120;
+      half = 1;
+    }
+
+    function drawField() {
+      ctx.fillStyle = '#1a5276';
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(W/2, 0);
+      ctx.lineTo(W/2, H);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(W/2, H/2, 60, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffd93d';
+      ctx.fillRect(0, GOAL_Y, GOAL_WIDTH, GOAL_HEIGHT);
+      ctx.fillRect(W - GOAL_WIDTH, GOAL_Y, GOAL_WIDTH, GOAL_HEIGHT);
+
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.font = 'bold 16px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('BLU', 80, 30);
+      ctx.fillText('ROSSO', W - 80, 30);
+    }
+
+    function drawBall() {
+      if (ballHolder) {
+        const holder = ballHolder;
+        const offset = 25;
+        ball.x = holder.x + Math.cos(holder.angle) * offset;
+        ball.y = holder.y + Math.sin(holder.angle) * offset;
+        ball.vx = 0;
+        ball.vy = 0;
+      } else {
+        ball.x += ball.vx;
+        ball.y += ball.vy;
+        ball.vx *= 0.98;
+        ball.vy *= 0.98;
+
+        if (ball.x < GOAL_WIDTH || ball.x > W - GOAL_WIDTH) {
+          if (ball.y > GOAL_Y && ball.y < GOAL_Y + GOAL_HEIGHT) {
+            if (ball.x < W/2) {
+              redScore++;
+              showMessage('GOAL ROSSO!');
+            } else {
+              blueScore++;
+              showMessage('GOAL BLU!');
+            }
+            resetAfterGoal();
+          } else {
+            ball.vx *= -0.8;
+            ball.x = Math.max(GOAL_WIDTH + ball.radius, Math.min(W - GOAL_WIDTH - ball.radius, ball.x));
+          }
+        }
+        if (ball.y < ball.radius || ball.y > H - ball.radius) {
+          ball.vy *= -0.8;
+          ball.y = Math.max(ball.radius, Math.min(H - ball.radius, ball.y));
+        }
+      }
+
+      ctx.fillStyle = '#ffd93d';
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = '#cc9900';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    function resetAfterGoal() {
+      ball.x = W/2;
+      ball.y = H/2;
+      ball.vx = 0;
+      ball.vy = 0;
+      ballHolder = null;
+      possessionTime = 0;
+      kayaks.forEach(k => k.hasBall = false);
+      
+      kayaks[0].x = 150; kayaks[0].y = H/2;
+      kayaks[1].x = 100; kayaks[1].y = H/4;
+      kayaks[2].x = 100; kayaks[2].y = H*3/4;
+      kayaks[3].x = 200; kayaks[3].y = H/3;
+      kayaks[4].x = 200; kayaks[4].y = H*2/3;
+      
+      kayaks[5].x = W-150; kayaks[5].y = H/2;
+      kayaks[6].x = W-100; kayaks[6].y = H/4;
+      kayaks[7].x = W-100; kayaks[7].y = H*3/4;
+      kayaks[8].x = W-200; kayaks[8].y = H/3;
+      kayaks[9].x = W-200; kayaks[9].y = H*2/3;
+    }
+
+    function showMessage(text) {
+      const msg = document.getElementById('message');
+      msg.textContent = text;
+      msg.style.display = 'block';
+      setTimeout(() => msg.style.display = 'none', 2000);
+    }
+
+    function checkCollisions() {
+      for (let k of kayaks) {
+        if (k.flipped) continue;
+        
+        const dist = Math.hypot(ball.x - k.x, ball.y - k.y);
+        if (dist < 30 && !ballHolder) {
+          ballHolder = k;
+          k.hasBall = true;
+          possessionTime = 0;
+        }
+      }
+    }
+
+    function updateUI() {
+      document.getElementById('blue-score').textContent = blueScore;
+      document.getElementById('red-score').textContent = redScore;
+      
+      const mins = Math.floor(gameTime / 60);
+      const secs = Math.floor(gameTime % 60);
+      document.getElementById('timer').textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+
+      if (ballHolder) {
+        possessionTime += 1/60;
+        document.getElementById('possession-time').textContent = possessionTime.toFixed(1);
+        const pct = Math.min(100, (possessionTime / 5) * 100);
+        document.getElementById('possession-fill').style.width = pct + '%';
+        
+        if (possessionTime > 5 && ballHolder.isPlayer) {
+          ballHolder.hasBall = false;
+          ballHolder = null;
+          possessionTime = 0;
+          showMessage('5 secondi! Persa la palla!');
+        }
+      } else {
+        document.getElementById('possession-time').textContent = '0.0';
+        document.getElementById('possession-fill').style.width = '0%';
+      }
+    }
+
+    let lastTime = 0;
+    function gameLoop(timestamp) {
+      const dt = Math.min((timestamp - lastTime) / 1000, 0.1);
+      lastTime = timestamp;
+
+      if (gameRunning) {
+        gameTime -= dt;
+        if (gameTime <= 0) {
+          if (half === 1) {
+            half = 2;
+            gameTime = 120;
+            showMessage('SECONDO TEMPO!');
+            resetAfterGoal();
+          } else {
+            gameRunning = false;
+            const winner = blueScore > redScore ? 'BLU VINCE!' : blueScore < redScore ? 'ROSSO VINCE!' : 'PAREGGIO!';
+            showMessage(winner);
+            document.getElementById('start-btn').style.display = 'block';
+            document.getElementById('start-btn').textContent = 'RIGIOCA';
+          }
+        }
+
+        kayaks.forEach(k => k.update(dt));
+        checkCollisions();
+        drawBall();
+        updateUI();
+      }
+
+      drawField();
+      kayaks.forEach(k => k.draw());
+      if (!ballHolder) drawBall();
+      if (ballHolder) drawBall();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    document.addEventListener('keydown', e => {
+      keys[e.code] = true;
+      
+      if ((e.code === 'Space' || e.code === 'KeyX') && gameRunning) {
+        const player = kayaks.find(k => k.isPlayer);
+        if (player && player.hasBall) {
+          player.throwBall(mouseX, mouseY);
+        }
+      }
+      
+      if (e.code === 'KeyE' && gameRunning) {
+        const player = kayaks.find(k => k.isPlayer);
+        if (player) {
+          for (let k of kayaks) {
+            if (k.team !== player.team && !k.flipped) {
+              const dist = Math.hypot(k.x - player.x, k.y - player.y);
+              if (dist < 50 && k.hasBall) {
+                k.flip();
+                break;
+              }
+            }
+          }
+        }
+      }
+    });
+
+    document.addEventListener('keyup', e => keys[e.code] = false);
+
+    canvas.addEventListener('mousemove', e => {
+      const rect = canvas.getBoundingClientRect();
+      mouseX = e.clientX - rect.left;
+      mouseY = e.clientY - rect.top;
+    });
+
+    canvas.addEventListener('click', e => {
+      if (!gameRunning) return;
+      const player = kayaks.find(k => k.isPlayer);
+      if (player && player.hasBall) {
+        player.throwBall(mouseX, mouseY);
+      }
+    });
+
+    document.getElementById('start-btn').addEventListener('click', () => {
+      document.getElementById('start-btn').style.display = 'none';
+      blueScore = 0;
+      redScore = 0;
+      initGame();
+      gameRunning = true;
+    });
+
+    initGame();
+    requestAnimationFrame(gameLoop);
+  </script>
+</body>
+</html>

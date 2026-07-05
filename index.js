@@ -108,6 +108,10 @@ app.post('/admin/query', async (req, res) => {
   }
 });
 
+app.get('/canoa-polo', (req, res) => {
+  res.render('canoa-polo');
+});
+
 const initDb = async () => {
   try {
     await pool.query(`
